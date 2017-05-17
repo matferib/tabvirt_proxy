@@ -81,7 +81,7 @@ func conexaoCliente(cliente net.Conn, mestre net.Conn) {
 	pipe(mestre2, cliente)
 }
 
-func init() {
+func main() {
 	log.Println("Falha abrindo socket mestre")
 	ln, err := net.Listen("tcp", ":11225")
 	if err != nil {
