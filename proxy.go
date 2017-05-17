@@ -1,9 +1,13 @@
 package main
 
 import (
-	"fmt"
+	"io"
+	"log"
 	"net"
+	"time"
 )
+
+var numClientes = 0
 
 func chanFromConn(conn net.Conn) chan []byte {
 	c := make(chan []byte)
@@ -33,6 +37,12 @@ func pipe(conn1 net.Conn, conn2 net.Conn) {
 	chan1 := chanFromConn(conn1)
 	chan2 := chanFromConn(conn2)
 
+	defer func() {
+		log.Println("Fechando canais")
+		conn1.Close()
+		conn2.Close()
+	}()
+
 	for {
 		select {
 		case b1 := <-chan1:
@@ -54,46 +64,59 @@ func pipe(conn1 net.Conn, conn2 net.Conn) {
 func conexaoCliente(cliente net.Conn, mestre net.Conn) {
 	ln, err := net.Listen("tcp", ":11226")
 	if err != nil {
-		fmt.Printf("Falha abrindo segundo socket mestre")
+		log.Println("Falha abrindo segundo socket mestre")
 		return
 	}
 
 	_, err = mestre.Write([]byte("novo"))
 	if err != nil {
-		fmt.Printf("Erro avisando mestre")
+		log.Println("Erro avisando mestre")
 		return
 	}
 	mestre2, err := ln.Accept()
 	if err != nil {
-		fmt.Printf("Erro recebendo nova conexao mestre")
+		log.Println("Erro recebendo nova conexao mestre")
 		return
 	}
 	pipe(mestre2, cliente)
 }
 
-func main() {
+func init() {
+	log.Println("Falha abrindo socket mestre")
 	ln, err := net.Listen("tcp", ":11225")
 	if err != nil {
-		fmt.Printf("Falha abrindo socket mestre")
+		log.Println("Falha abrindo socket mestre")
 		ln.Close()
 		return
 	}
 	mestre, err := ln.Accept()
 	if err != nil {
-		fmt.Printf("Falha ao receber conexao mestre")
+		log.Println("Falha ao receber conexao mestre")
 		mestre.Close()
 		return
 	}
 
 	ln, err = net.Listen("tcp", ":11227")
 	if err != nil {
-		fmt.Printf("Falha abrindo socket clientes")
+		log.Println("Falha abrindo socket clientes")
 		return
 	}
+	numClientes = 0
+	mestre.SetReadDeadline(time.Now())
+	nop := []byte{}
 	for {
+		if _, err := mestre.Read(nop); err == io.EOF {
+			log.Println("Server closed")
+			break;
+		}
 		conn, err := ln.Accept()
 		if err != nil {
-			fmt.Printf("Falha recebendo conexao cliente")
+			log.Println("Falha recebendo conexao cliente")
+			continue
+		}
+		numClientes++
+		if numClientes > 1 {
+			conn.Close()
 			continue
 		}
 		go conexaoCliente(net.Conn(conn), net.Conn(mestre))
