@@ -82,7 +82,7 @@ func conexaoCliente(cliente net.Conn, mestre net.Conn) {
 }
 
 func main() {
-	log.Println("Falha abrindo socket mestre")
+	log.Println("Iniciando")
 	//ln, err := net.Listen("tcp", ":11225")
 	ln, err := net.Listen("tcp", ":8080")
 	if err != nil {
@@ -108,7 +108,7 @@ func main() {
 	for {
 		if _, err := mestre.Read(nop); err == io.EOF {
 			log.Println("Server closed")
-			break;
+			break
 		}
 		conn, err := ln.Accept()
 		if err != nil {
