@@ -4,6 +4,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/http"
 	"time"
 )
 
@@ -81,10 +82,15 @@ func conexaoCliente(cliente net.Conn, mestre net.Conn) {
 	pipe(mestre2, cliente)
 }
 
+func handler(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprint(w, "Hello, world!")
+}
+
 func main() {
+	http.HandleFunc("/", handler)
+	go http.ListenAndServe(":8080", nil)
 	log.Println("Iniciando")
-	//ln, err := net.Listen("tcp", ":11225")
-	ln, err := net.Listen("tcp", ":8080")
+	ln, err := net.Listen("tcp", ":11225")
 	if err != nil {
 		log.Println("Falha abrindo socket mestre")
 		ln.Close()
