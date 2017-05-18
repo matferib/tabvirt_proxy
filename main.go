@@ -63,14 +63,8 @@ func pipe(conn1 net.Conn, conn2 net.Conn) {
 	}
 }
 
-func conexaoCliente(cliente net.Conn, mestre net.Conn) {
-	ln, err := net.Listen("tcp", ":11226")
-	if err != nil {
-		log.Println("Falha abrindo segundo socket mestre")
-		return
-	}
-
-	_, err = mestre.Write([]byte("novo"))
+func conexaoCliente(ln net.Listener, cliente net.Conn, mestre net.Conn) {
+	_, err := mestre.Write([]byte("novo"))
 	if err != nil {
 		log.Println("Erro avisando mestre")
 		return
@@ -112,6 +106,13 @@ func main() {
 	numClientes = 0
 	mestre.SetReadDeadline(time.Now())
 	nop := []byte{}
+
+	ln2, err := net.Listen("tcp", ":11226")
+	if err != nil {
+		log.Println("Falha abrindo segundo socket mestre")
+		return
+	}
+
 	for {
 		if _, err := mestre.Read(nop); err == io.EOF {
 			log.Println("Server closed")
@@ -123,10 +124,10 @@ func main() {
 			continue
 		}
 		numClientes++
-		if numClientes > 1 {
+		if numClientes > 10 {
 			conn.Close()
 			continue
 		}
-		go conexaoCliente(net.Conn(conn), net.Conn(mestre))
+		go conexaoCliente(ln2, net.Conn(conn), net.Conn(mestre))
 	}
 }
