@@ -89,7 +89,7 @@ func servidorProxy() {
 		log.Println("Falha abrindo segundo socket mestre")
 		return
 	}
-	defer mestreListener.Close()
+	defer mestreClienteListener.Close()
 
 	for {
 		novoCliente, err := clienteListener.Accept()
