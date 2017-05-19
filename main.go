@@ -53,12 +53,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, "Hello, world!")
 }
 
-func main() {
-	// Cloud services.
-	http.HandleFunc("/", handler)
-	go http.ListenAndServe(":8080", nil)
-	// End cloud services.
-
+func servidorProxy() {
 	log.Println("Iniciando")
 	mestreListener, err := net.Listen("tcp", ":11225")
 	if err != nil {
@@ -66,6 +61,7 @@ func main() {
 		mestreListener.Close()
 		return
 	}
+	defer mestreListener.Close()
 	// Conexao principal do mestre, para notificacao de cliente novo.
 	mestre, err := mestreListener.Accept()
 	if err != nil {
@@ -74,7 +70,7 @@ func main() {
 		mestre.Close()
 		return
 	}
-	defer func() { mestre.Close() }()
+	defer mestre.Close()
 	log.Println("Mestre principal conectado")
 
 	clienteListener, err := net.Listen("tcp", ":11227")
@@ -82,7 +78,7 @@ func main() {
 		log.Println("Falha abrindo socket clientes")
 		return
 	}
-	defer func() { clienteListener.Close() }()
+	defer clienteListener.Close()
 
 	numClientes = 0
 
@@ -93,7 +89,7 @@ func main() {
 		log.Println("Falha abrindo segundo socket mestre")
 		return
 	}
-	defer func() { mestreListener.Close() }()
+	defer mestreListener.Close()
 
 	for {
 		novoCliente, err := clienteListener.Accept()
@@ -111,5 +107,16 @@ func main() {
 			log.Println("Mestre morreu")
 			break
 		}
+	}
+}
+
+func main() {
+	// Cloud services.
+	http.HandleFunc("/", handler)
+	go http.ListenAndServe(":8080", nil)
+	// End cloud services.
+
+	for {
+		servidorProxy()
 	}
 }
