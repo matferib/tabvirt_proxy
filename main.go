@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"net/http"
@@ -41,6 +40,7 @@ func pipe(conn1 net.Conn, conn2 net.Conn) {
 
 	defer func() {
 		log.Println("Fechando canais")
+		numClientes--
 		conn1.Close()
 		conn2.Close()
 	}()
@@ -63,18 +63,31 @@ func pipe(conn1 net.Conn, conn2 net.Conn) {
 	}
 }
 
-func conexaoCliente(ln net.Listener, cliente net.Conn, mestre net.Conn) {
+func conexaoCliente(mestreClienteListener *net.TCPListener, mestre net.Conn, cliente net.Conn) error {
+	log.Println("Novo cliente chegou, iniciando conexao")
+
+	// Notifica mestre sobre novo cliente.
 	_, err := mestre.Write([]byte("novo"))
 	if err != nil {
 		log.Println("Erro avisando mestre")
-		return
+		return err
 	}
-	mestre2, err := ln.Accept()
+	log.Println("Mestre notificado")
+
+	// Aguarda nova conexao do mestre.
+	mestreClienteListener.SetDeadline(time.Now().Add(5 * time.Second))
+	mestreCliente, err := mestreClienteListener.Accept()
 	if err != nil {
+		cliente.Close()
 		log.Println("Erro recebendo nova conexao mestre")
-		return
+		return err
 	}
-	pipe(mestre2, cliente)
+	log.Println("Nova conexao com mestre ok")
+
+	// Conecta os dois.
+	go pipe(mestreCliente, cliente)
+	log.Println("Pipe criado entre os dois")
+	return nil
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
@@ -82,52 +95,62 @@ func handler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	// Cloud services.
 	http.HandleFunc("/", handler)
 	go http.ListenAndServe(":8080", nil)
+	// End cloud services.
+
 	log.Println("Iniciando")
-	ln, err := net.Listen("tcp", ":11225")
+	mestreListener, err := net.Listen("tcp", ":11225")
 	if err != nil {
 		log.Println("Falha abrindo socket mestre")
-		ln.Close()
+		mestreListener.Close()
 		return
 	}
-	mestre, err := ln.Accept()
+	// Conexao principal do mestre, para notificacao de cliente novo.
+	mestre, err := mestreListener.Accept()
 	if err != nil {
 		log.Println("Falha ao receber conexao mestre")
+		mestreListener.Close()
 		mestre.Close()
 		return
 	}
+	defer func() { mestre.Close() }()
+	log.Println("Mestre principal conectado")
 
-	ln, err = net.Listen("tcp", ":11227")
+	clienteListener, err := net.Listen("tcp", ":11227")
 	if err != nil {
 		log.Println("Falha abrindo socket clientes")
 		return
 	}
-	numClientes = 0
-	mestre.SetReadDeadline(time.Now())
-	nop := []byte{}
+	defer func() { clienteListener.Close() }()
 
-	ln2, err := net.Listen("tcp", ":11226")
+	numClientes = 0
+
+	// Mestre precisa de uma conexao por cliente.
+	mestreAddr, err := net.ResolveTCPAddr("tcp", ":11226")
+	mestreClienteListener, err := net.ListenTCP("tcp", mestreAddr)
 	if err != nil {
 		log.Println("Falha abrindo segundo socket mestre")
 		return
 	}
+	defer func() { mestreListener.Close() }()
 
 	for {
-		if _, err := mestre.Read(nop); err == io.EOF {
-			log.Println("Server closed")
-			break
-		}
-		conn, err := ln.Accept()
+		novoCliente, err := clienteListener.Accept()
 		if err != nil {
 			log.Println("Falha recebendo conexao cliente")
 			continue
 		}
 		numClientes++
 		if numClientes > 10 {
-			conn.Close()
+			log.Println("Numero maximo de clientes excedido")
+			novoCliente.Close()
 			continue
 		}
-		go conexaoCliente(ln2, net.Conn(conn), net.Conn(mestre))
+		if conexaoCliente(mestreClienteListener, net.Conn(mestre), net.Conn(novoCliente)) != nil {
+			log.Println("Mestre morreu")
+			break
+		}
 	}
 }
