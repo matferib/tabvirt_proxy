@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -10,57 +11,15 @@ import (
 
 var numClientes = 0
 
-func chanFromConn(conn net.Conn) chan []byte {
-	c := make(chan []byte)
-
-	go func() {
-		b := make([]byte, 1024)
-
-		for {
-			n, err := conn.Read(b)
-			if n > 0 {
-				res := make([]byte, n)
-				// Copy the buffer so it doesn't get changed while read by the recipient.
-				copy(res, b[:n])
-				c <- res
-			}
-			if err != nil {
-				c <- nil
-				break
-			}
-		}
-	}()
-
-	return c
+func pipe(writer net.Conn, reader net.Conn) {
+	io.Copy(writer, reader)
+	writer.Close()
+	reader.Close()
 }
 
-func pipe(conn1 net.Conn, conn2 net.Conn) {
-	chan1 := chanFromConn(conn1)
-	chan2 := chanFromConn(conn2)
-
-	defer func() {
-		log.Println("Fechando canais")
-		numClientes--
-		conn1.Close()
-		conn2.Close()
-	}()
-
-	for {
-		select {
-		case b1 := <-chan1:
-			if b1 == nil {
-				return
-			} else {
-				conn2.Write(b1)
-			}
-		case b2 := <-chan2:
-			if b2 == nil {
-				return
-			} else {
-				conn1.Write(b2)
-			}
-		}
-	}
+func pipeDuplex(conn1 net.Conn, conn2 net.Conn) {
+	go pipe(conn1, conn2)
+	go pipe(conn2, conn1)
 }
 
 func conexaoCliente(mestreClienteListener *net.TCPListener, mestre net.Conn, cliente net.Conn) error {
@@ -85,7 +44,7 @@ func conexaoCliente(mestreClienteListener *net.TCPListener, mestre net.Conn, cli
 	log.Println("Nova conexao com mestre ok")
 
 	// Conecta os dois.
-	go pipe(mestreCliente, cliente)
+	go pipeDuplex(mestreCliente, cliente)
 	log.Println("Pipe criado entre os dois")
 	return nil
 }
